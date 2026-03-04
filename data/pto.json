@@ -1,0 +1,121 @@
+{
+  "requests": [
+    {
+      "id": "mmcg7ekgtvb6dfz5",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "startDate": "2026-03-09",
+      "endDate": "2026-03-10",
+      "reason": "DMV Appointment",
+      "status": "approved",
+      "createdAt": "2026-03-04T19:47:14.944Z",
+      "updatedAt": "2026-03-04T20:02:27.696Z"
+    },
+    {
+      "id": "mmcg7qqdf60vjy1d",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "startDate": "2026-03-11",
+      "endDate": "2026-03-12",
+      "reason": "No Reason\n",
+      "status": "denied",
+      "createdAt": "2026-03-04T19:47:30.709Z",
+      "updatedAt": "2026-03-04T20:02:33.360Z"
+    },
+    {
+      "id": "mmcik39wrlay9wv0",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "startDate": "2026-03-12",
+      "endDate": "2026-03-13",
+      "reason": "vaca!",
+      "status": "approved",
+      "createdAt": "2026-03-04T20:53:06.068Z",
+      "updatedAt": "2026-03-04T20:53:25.956Z"
+    },
+    {
+      "id": "mmcj4muv89dgp2v7",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "startDate": "2026-03-20",
+      "endDate": "2026-03-21",
+      "reason": "vaca2",
+      "status": "approved",
+      "createdAt": "2026-03-04T21:09:04.567Z",
+      "updatedAt": "2026-03-04T21:09:11.526Z",
+      "type": "pto"
+    },
+    {
+      "id": "mmcj5forppkrrk4x",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "startDate": "2026-03-20",
+      "endDate": "2026-03-21",
+      "reason": "vaca3",
+      "status": "approved",
+      "createdAt": "2026-03-04T21:09:41.931Z",
+      "updatedAt": "2026-03-04T21:09:50.738Z",
+      "type": "pto"
+    },
+    {
+      "id": "mmcj6cbs6xh8m94b",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "startDate": "2026-03-17",
+      "endDate": "2026-03-17",
+      "reason": "sick dawg.",
+      "status": "approved",
+      "createdAt": "2026-03-04T21:10:24.232Z",
+      "updatedAt": "2026-03-04T21:10:26.870Z",
+      "type": "sick"
+    },
+    {
+      "id": "mmcjcavbdsas18h7",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "startDate": "2026-03-04",
+      "endDate": "2026-03-04",
+      "reason": "vaca3",
+      "status": "denied",
+      "createdAt": "2026-03-04T21:15:02.279Z",
+      "updatedAt": "2026-03-04T21:15:10.345Z",
+      "type": "pto"
+    },
+    {
+      "id": "mmcjdf1d7q9ytmjr",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "startDate": "2026-03-04",
+      "endDate": "2026-03-04",
+      "reason": "sick",
+      "status": "denied",
+      "createdAt": "2026-03-04T21:15:54.337Z",
+      "updatedAt": "2026-03-04T21:16:00.583Z",
+      "type": "sick"
+    },
+    {
+      "id": "mmcjy37v5kd131hv",
+      "userEmail": "morr@bullzeyeequipment.com",
+      "userName": "Mitchell Orr",
+      "startDate": "2026-04-30",
+      "endDate": "2026-05-01",
+      "reason": "Vacation. Thursday 04/30/2026 do not need full day off only half.",
+      "status": "approved",
+      "createdAt": "2026-03-04T21:31:58.795Z",
+      "updatedAt": "2026-03-04T21:33:01.530Z",
+      "type": "pto"
+    },
+    {
+      "id": "mmck9du0joth97g5",
+      "userEmail": "morr@bullzeyeequipment.com",
+      "userName": "Mitchell Orr",
+      "startDate": "2026-03-12",
+      "endDate": "2026-03-12",
+      "reason": "sick",
+      "status": "denied",
+      "createdAt": "2026-03-04T21:40:45.768Z",
+      "updatedAt": "2026-03-04T21:42:23.904Z",
+      "type": "sick"
+    }
+  ]
+}
