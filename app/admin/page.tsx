@@ -252,7 +252,7 @@ export default function AdminPage() {
         >
           <div>
             <h1 style={{ fontSize: 28, margin: 0, letterSpacing: -0.3 }}>
-              HR PTO Dashboard
+              HR PTO Dashboards
             </h1>
             <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: 14 }}>
               Review and approve employee leave requests.
