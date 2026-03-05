@@ -3,20 +3,56 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 
+const HOURS_PER_DAY = 8;
+
+const LEAVE_TYPES = [
+  "Vacation",
+  "Personal leave",
+  "Sick",
+  "Jury duty",
+  "Voting",
+  "Bereavement",
+  "Family medical leave",
+  "Other",
+] as const;
+
+type LeaveType = (typeof LEAVE_TYPES)[number];
+type DurationType = "full_day" | "hourly";
+
 type PTORequest = {
   id: string;
   userEmail: string;
   userName?: string | null;
+
+  leaveType: LeaveType;
+  durationType: DurationType;
+
   startDate: string;
   endDate: string;
+  hours?: number;
+  totalHours: number;
+
   reason: string;
+
   status: "pending" | "approved" | "denied";
   createdAt: string;
   updatedAt: string;
 };
 
+type Balance = {
+  ptoHours: number;
+  sickHours: number;
+};
+
+function fmt(ts?: string | null) {
+  if (!ts) return "";
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  return d.toLocaleString();
+}
+
 function StatusPill({ status }: { status: PTORequest["status"] }) {
-  const styles: Record<string, React.CSSProperties> = {
+  const styles: Record<PTORequest["status"], React.CSSProperties> = {
     pending: {
       background: "#FFF7ED",
       color: "#9A3412",
@@ -52,29 +88,54 @@ function StatusPill({ status }: { status: PTORequest["status"] }) {
   );
 }
 
+function formatHoursAsDays(hours: number) {
+  const days = hours / HOURS_PER_DAY;
+  return days % 1 === 0 ? `${days} days` : `${days.toFixed(2)} days`;
+}
+
 export default function PTOPage() {
-  const [requests, setRequests] = useState<PTORequest[]>([]);
+  const { data: session } = useSession();
+
+  // form
+  const [leaveType, setLeaveType] = useState<LeaveType>("Vacation");
+  const [durationType, setDurationType] = useState<DurationType>("full_day");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [hours, setHours] = useState("1"); // string for easier input
   const [reason, setReason] = useState("");
+
+  // check if hr
+  const [isHr, setIsHr] = useState(false);
+
+  // data
+  const [requests, setRequests] = useState<PTORequest[]>([]);
+  const [balance, setBalance] = useState<Balance>({
+    ptoHours: 0,
+    sickHours: 0,
+  });
+
+  // ui state
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [debug, setDebug] = useState("not-started");
-  const { data: session } = useSession();
-  const [balance, setBalance] = useState({ pto: 0, sick: 0 });
-  const [reqType, setReqType] = useState<"pto" | "sick">("pto");
 
   async function loadBalance() {
-    const res = await fetch("/api/balance");
-    const data = await res.json();
-    setBalance(data);
+    const res = await fetch("/api/balance", {
+      cache: "no-store",
+      credentials: "include",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setBalance({
+        ptoHours: Number(data.ptoHours ?? 0),
+        sickHours: Number(data.sickHours ?? 0),
+      });
+    }
   }
 
   async function loadRequests() {
     setLoading(true);
     setError(null);
-
     try {
       const res = await fetch("/api/pto", {
         cache: "no-store",
@@ -82,7 +143,6 @@ export default function PTOPage() {
       });
 
       const data = await res.json().catch(() => ({}));
-
       if (!res.ok) {
         throw new Error(
           data?.error || `Failed to load requests (${res.status})`
@@ -99,12 +159,12 @@ export default function PTOPage() {
   }
 
   useEffect(() => {
-    setDebug("useEffect-fired");
+    fetch("/api/hr", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setIsHr(!!d?.isHr))
+      .catch(() => setIsHr(false));
     loadRequests();
     loadBalance();
-    loadRequests()
-      .then(() => setDebug("loadRequests-finished"))
-      .catch(() => setDebug("loadRequests-error"));
   }, []);
 
   async function submitRequest(e: React.FormEvent) {
@@ -113,20 +173,55 @@ export default function PTOPage() {
     setError(null);
 
     try {
+      // Required field enforcement (client-side; server also enforces)
+      if (!leaveType) throw new Error("Leave type is required.");
+      if (!durationType) throw new Error("Duration is required.");
+      if (!startDate) throw new Error("Start date is required.");
+      if (durationType === "full_day" && !endDate)
+        throw new Error("End date is required.");
+      if (!reason.trim()) throw new Error("Reason is required.");
+
+      let payload: any = {
+        leaveType,
+        durationType,
+        startDate,
+        endDate: durationType === "hourly" ? startDate : endDate,
+        reason: reason.trim(),
+      };
+
+      if (durationType === "hourly") {
+        const h = Number(hours);
+        if (!Number.isFinite(h) || h <= 0 || h > HOURS_PER_DAY) {
+          throw new Error("Hours must be between 0.25 and 8.");
+        }
+        const rounded = Math.round(h * 4) / 4;
+        if (Math.abs(rounded - h) > 1e-9) {
+          throw new Error(
+            "Hours must be in 0.25 increments (e.g., 1.5, 2.25)."
+          );
+        }
+        payload.hours = h;
+      }
+
       const res = await fetch("/api/pto", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startDate, endDate, reason, type: reqType }),
+        body: JSON.stringify(payload),
       });
 
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
         throw new Error(j?.error || "Failed to submit request.");
       }
 
+      // reset form
       setStartDate("");
       setEndDate("");
       setReason("");
+      setHours("1");
+      setDurationType("full_day");
+      setLeaveType("Vacation");
+
       await loadRequests();
       await loadBalance();
     } catch (err: any) {
@@ -154,10 +249,12 @@ export default function PTOPage() {
           }}
         >
           <div>
-            <h1 style={{ fontSize: 28, margin: 0 }}>Bullzeye PTO</h1>
+            <h1 style={{ fontSize: 28, margin: 0, letterSpacing: -0.3 }}>
+              Bullzeye PTO
+            </h1>
 
             {session?.user?.name && (
-              <p style={{ marginTop: 6, color: "#6b7280" }}>
+              <p style={{ margin: "8px 0 0", color: "#6b7280" }}>
                 Hello <strong>{session.user.name}</strong>
               </p>
             )}
@@ -166,7 +263,8 @@ export default function PTOPage() {
               style={{
                 marginTop: 10,
                 display: "flex",
-                gap: 16,
+                gap: 12,
+                flexWrap: "wrap",
                 fontSize: 14,
               }}
             >
@@ -174,44 +272,47 @@ export default function PTOPage() {
                 style={{
                   padding: "6px 12px",
                   borderRadius: 10,
-                  background: "#ecfdf5",
-                  border: "1px solid #a7f3d0",
+                  background: "#ECFDF5",
+                  border: "1px solid #A7F3D0",
                 }}
               >
-                PTO Remaining: <b>{balance.pto}</b>
+                PTO Remaining: <b>{balance.ptoHours}</b> hrs (
+                {formatHoursAsDays(balance.ptoHours)})
               </div>
-
               <div
                 style={{
                   padding: "6px 12px",
                   borderRadius: 10,
-                  background: "#eff6ff",
-                  border: "1px solid #bfdbfe",
+                  background: "#EFF6FF",
+                  border: "1px solid #BFDBFE",
                 }}
               >
-                Sick Days: <b>{balance.sick}</b>
+                Sick Remaining: <b>{balance.sickHours}</b> hrs (
+                {formatHoursAsDays(balance.sickHours)})
               </div>
             </div>
 
-            <p style={{ margin: "6px 0 0", color: "#6b7280" }}>
+            <p style={{ margin: "10px 0 0", color: "#6b7280" }}>
               Submit time off requests and track approval status.
             </p>
           </div>
 
-          <a
-            href="/admin"
-            style={{
-              fontSize: 14,
-              textDecoration: "none",
-              color: "#111827",
-              border: "1px solid #e5e7eb",
-              borderRadius: 10,
-              padding: "10px 12px",
-              background: "#fafafa",
-            }}
-          >
-            HR Dashboard →
-          </a>
+          {isHr && (
+            <a
+              href="/admin"
+              style={{
+                fontSize: 14,
+                textDecoration: "none",
+                color: "#111827",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: "10px 12px",
+                background: "#fafafa",
+              }}
+            >
+              HR Dashboard →
+            </a>
+          )}
         </header>
 
         <div style={{ height: 18 }} />
@@ -241,15 +342,64 @@ export default function PTOPage() {
             boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
           }}
         >
-          <h2 style={{ margin: 0, fontSize: 16 }}>New PTO request</h2>
+          <h2 style={{ margin: 0, fontSize: 16 }}>New leave request</h2>
           <p style={{ margin: "6px 0 14px", color: "#6b7280", fontSize: 14 }}>
-            Fill out the details below. HR will review and approve/deny.
+            All fields are required.
           </p>
 
           <form
             onSubmit={submitRequest}
             style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
           >
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={{ fontSize: 13, color: "#374151" }}>
+                Leave type
+              </label>
+              <select
+                value={leaveType}
+                onChange={(e) => setLeaveType(e.target.value as LeaveType)}
+                required
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  padding: "10px 12px",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 12,
+                  outline: "none",
+                  background: "#fff",
+                }}
+              >
+                {LEAVE_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={{ fontSize: 13, color: "#374151" }}>Duration</label>
+              <select
+                value={durationType}
+                onChange={(e) =>
+                  setDurationType(e.target.value as DurationType)
+                }
+                required
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  padding: "10px 12px",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 12,
+                  outline: "none",
+                  background: "#fff",
+                }}
+              >
+                <option value="full_day">Full day(s) (8 hrs/day)</option>
+                <option value="hourly">Hourly</option>
+              </select>
+            </div>
+
             <div>
               <label style={{ fontSize: 13, color: "#374151" }}>
                 Start date
@@ -270,32 +420,16 @@ export default function PTOPage() {
               />
             </div>
 
-            <div>
-              <label style={{ fontSize: 13, color: "#374151" }}>End date</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                required
-                style={{
-                  width: "100%",
-                  marginTop: 6,
-                  padding: "10px 12px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 12,
-                  outline: "none",
-                }}
-              />
-            </div>
-
-            <div style={{ gridColumn: "1 / -1" }}>
-              <div style={{ gridColumn: "1 / -1" }}>
+            {durationType === "full_day" ? (
+              <div>
                 <label style={{ fontSize: 13, color: "#374151" }}>
-                  Request type
+                  End date
                 </label>
-                <select
-                  value={reqType}
-                  onChange={(e) => setReqType(e.target.value as "pto" | "sick")}
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  required
                   style={{
                     width: "100%",
                     marginTop: 6,
@@ -303,20 +437,40 @@ export default function PTOPage() {
                     border: "1px solid #e5e7eb",
                     borderRadius: 12,
                     outline: "none",
-                    background: "#fff",
                   }}
-                >
-                  <option value="pto">PTO</option>
-                  <option value="sick">Sick</option>
-                </select>
+                />
               </div>
+            ) : (
+              <div>
+                <label style={{ fontSize: 13, color: "#374151" }}>Hours</label>
+                <input
+                  type="number"
+                  min={0.25}
+                  max={8}
+                  step={0.25}
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                  required
+                  style={{
+                    width: "100%",
+                    marginTop: 6,
+                    padding: "10px 12px",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 12,
+                    outline: "none",
+                  }}
+                />
+              </div>
+            )}
+
+            <div style={{ gridColumn: "1 / -1" }}>
               <label style={{ fontSize: 13, color: "#374151" }}>Reason</label>
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 required
                 rows={3}
-                placeholder="Vacation, appointment, sick day, etc."
+                placeholder="Required"
                 style={{
                   width: "100%",
                   marginTop: 6,
@@ -403,11 +557,18 @@ export default function PTOPage() {
               }}
             >
               <div>
-                <div style={{ fontWeight: 700, color: "#111827" }}>
+                <div style={{ fontWeight: 800, color: "#111827" }}>
                   {r.startDate} → {r.endDate}
+                </div>
+                <div style={{ marginTop: 6, color: "#374151" }}>
+                  <b>{r.leaveType}</b> •{" "}
+                  {r.durationType === "hourly"
+                    ? `${r.hours} hrs`
+                    : `${r.totalHours} hrs`}
                 </div>
                 <div style={{ marginTop: 6, color: "#374151" }}>{r.reason}</div>
               </div>
+
               <div
                 style={{
                   display: "flex",

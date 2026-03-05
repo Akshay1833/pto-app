@@ -5,116 +5,176 @@ import path from "path";
 import { requireHr } from "../../_utils/isHr";
 
 const DATA_PATH = path.join(process.cwd(), "data", "pto.json");
-const HR_EMAIL = "lkimbrough@bullzeyeequipment.com";
 const BALANCE_PATH = path.join(process.cwd(), "data", "balances.json");
 
-async function readBalances(): Promise<
-  Record<string, { pto: number; sick: number }>
-> {
-  try {
-    const raw = await fs.readFile(BALANCE_PATH, "utf8");
-    return JSON.parse(raw) || {};
-  } catch {
-    return {};
-  }
-}
+// Which leave types should deduct from which bucket
+const LEAVE_DEDUCT_RULES: Record<string, "pto" | "sick" | "none"> = {
+  Vacation: "pto",
+  "Personal leave": "pto",
+  Sick: "sick",
+  "Jury duty": "none",
+  Voting: "none",
+  Bereavement: "none",
+  "Family medical leave": "none",
+  Other: "pto",
+};
 
-async function writeBalances(balances: any) {
-  await fs.mkdir(path.dirname(BALANCE_PATH), { recursive: true });
-  await fs.writeFile(BALANCE_PATH, JSON.stringify(balances, null, 2), "utf8");
-}
+type BalanceMap = Record<string, { ptoHours: number; sickHours: number }>;
 
-function daysInclusive(startDate: string, endDate: string) {
-  const s = new Date(startDate + "T00:00:00");
-  const e = new Date(endDate + "T00:00:00");
-  const ms = e.getTime() - s.getTime();
-  const days = Math.floor(ms / (1000 * 60 * 60 * 24)) + 1;
-  return Math.max(1, days);
-}
+type PTORequest = {
+  id: string;
+  userEmail: string;
+  userName?: string | null;
 
-async function readData() {
+  leaveType?: string;
+  durationType?: "full_day" | "hourly";
+  startDate?: string;
+  endDate?: string;
+  hours?: number;
+  totalHours?: number;
+
+  reason?: string;
+
+  status: "pending" | "approved" | "denied";
+  createdAt?: string;
+  updatedAt?: string;
+
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  deniedBy?: string | null;
+  deniedAt?: string | null;
+};
+
+async function readData(): Promise<{ requests: PTORequest[] }> {
   try {
     const raw = await fs.readFile(DATA_PATH, "utf8");
     const parsed = JSON.parse(raw);
-    return { requests: Array.isArray(parsed.requests) ? parsed.requests : [] };
+    return {
+      requests: Array.isArray(parsed?.requests) ? parsed.requests : [],
+    };
   } catch {
     return { requests: [] };
   }
 }
 
-async function writeData(data: any) {
+async function writeData(data: { requests: PTORequest[] }) {
   await fs.mkdir(path.dirname(DATA_PATH), { recursive: true });
   await fs.writeFile(DATA_PATH, JSON.stringify(data, null, 2), "utf8");
 }
 
+async function readBalances(): Promise<BalanceMap> {
+  try {
+    const raw = await fs.readFile(BALANCE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeBalances(balances: BalanceMap) {
+  await fs.mkdir(path.dirname(BALANCE_PATH), { recursive: true });
+  await fs.writeFile(BALANCE_PATH, JSON.stringify(balances, null, 2), "utf8");
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession();
-  const email = session?.user?.email;
+  const hrEmail = session?.user?.email?.toLowerCase();
 
+  if (!hrEmail) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
+  // HR-only gate
   const hr = await requireHr();
-  if (!hr.ok) {
-    return NextResponse.json(
-      {
-        error: hr.status === 401 ? "Not signed in" : "Forbidden",
-        email: hr.email,
-      },
-      { status: hr.status }
-    );
+  if (!hr?.ok) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);
-  const id = body?.id;
-  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  const id = body?.id as string | undefined;
 
-  const data = await readData();
-  const item = data.requests.find((r: any) => r.id === id);
-
-  if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  // Idempotency: if already approved, do nothing (don’t double-deduct)
-  if (item.status === "approved") {
-    return NextResponse.json({ ok: true, alreadyApproved: true });
+  if (!id) {
+    return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
-  // Only deduct when moving from pending -> approved
+  const data = await readData();
+  const item = data.requests.find((r) => r.id === id);
+
+  if (!item) {
+    return NextResponse.json({ error: "Request not found" }, { status: 404 });
+  }
+
+  // Only pending can be approved (prevents double-deduct)
   if (item.status !== "pending") {
-    // denied -> approved (rare) OR other status; allow it if you want, but
-    // safest: block changing final decisions
     return NextResponse.json(
       { error: "Only pending requests can be approved." },
       { status: 400 }
     );
   }
 
-  const requestType = (item.type === "sick" ? "sick" : "pto") as "pto" | "sick";
-  const days = daysInclusive(item.startDate, item.endDate);
+  const leaveType = item.leaveType || "Other";
+  const bucket: "pto" | "sick" | "none" =
+    LEAVE_DEDUCT_RULES[leaveType] ?? "pto";
 
-  const balances = await readBalances();
-  const userKey = (item.userEmail || "").toLowerCase();
+  // How many hours to deduct (we rely on totalHours calculated when created)
+  const hoursToDeduct = Number(item.totalHours ?? item.hours ?? 0);
 
-  if (!balances[userKey]) {
-    balances[userKey] = { pto: 0, sick: 0 };
+  if (bucket !== "none") {
+    if (!Number.isFinite(hoursToDeduct) || hoursToDeduct <= 0) {
+      return NextResponse.json(
+        { error: "Invalid hours on request (totalHours/hours missing)." },
+        { status: 400 }
+      );
+    }
+
+    const balances = await readBalances();
+    const userKey = (item.userEmail || "").toLowerCase();
+
+    if (!balances[userKey]) balances[userKey] = { ptoHours: 0, sickHours: 0 };
+
+    if (bucket === "pto") {
+      if (balances[userKey].ptoHours < hoursToDeduct) {
+        return NextResponse.json(
+          {
+            error: `Insufficient PTO balance. Needs ${hoursToDeduct}, has ${balances[userKey].ptoHours}.`,
+          },
+          { status: 400 }
+        );
+      }
+      balances[userKey].ptoHours -= hoursToDeduct;
+    } else {
+      if (balances[userKey].sickHours < hoursToDeduct) {
+        return NextResponse.json(
+          {
+            error: `Insufficient Sick balance. Needs ${hoursToDeduct}, has ${balances[userKey].sickHours}.`,
+          },
+          { status: 400 }
+        );
+      }
+      balances[userKey].sickHours -= hoursToDeduct;
+    }
+
+    await writeBalances(balances);
   }
 
-  if (balances[userKey][requestType] < days) {
-    return NextResponse.json(
-      {
-        error: `Insufficient ${requestType.toUpperCase()} balance. Needs ${days}, has ${
-          balances[userKey][requestType]
-        }.`,
-      },
-      { status: 400 }
-    );
-  }
-
-  // Deduct
-  balances[userKey][requestType] -= days;
+  const now = new Date().toISOString();
+  const actor = session?.user?.name || session?.user?.email || null;
 
   item.status = "approved";
-  item.updatedAt = new Date().toISOString();
+  item.approvedBy = actor;
+  item.approvedAt = now;
+  item.deniedBy = null;
+  item.deniedAt = null;
+  item.updatedAt = now;
 
   await writeData(data);
-  await writeBalances(balances);
 
-  return NextResponse.json({ ok: true, daysDeducted: days, type: requestType });
+  return NextResponse.json({
+    ok: true,
+    id,
+    status: item.status,
+    bucket,
+    deductedHours: bucket === "none" ? 0 : hoursToDeduct,
+  });
 }

@@ -1,14 +1,14 @@
 {
   "adhakan@bullzeyeequipment.com": {
-    "pto": 11,
-    "sick": 6
+    "ptoHours": 114,
+    "sickHours": 56
   },
   "lkimbrough@bullzeyeequipment.com": {
-    "pto": 20,
-    "sick": 10
+    "ptoHours": 160,
+    "sickHours": 80
   },
   "morr@bullzeyeequipment.com": {
-    "pto": 18,
-    "sick": 10
+    "ptoHours": 160,
+    "sickHours": 80
   }
 }
