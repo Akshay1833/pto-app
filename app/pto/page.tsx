@@ -20,6 +20,10 @@ type LeaveType = (typeof LEAVE_TYPES)[number];
 type DurationType = "full_day" | "hourly";
 
 type PTORequest = {
+  approvedBy: string;
+  approvedAt: any;
+  deniedBy: string;
+  deniedAt: any;
   id: string;
   userEmail: string;
   userName?: string | null;
@@ -568,6 +572,21 @@ export default function PTOPage() {
                 </div>
                 <div style={{ marginTop: 6, color: "#374151" }}>{r.reason}</div>
               </div>
+              <div style={{ marginTop: 6, color: "#6b7280", fontSize: 13 }}>
+                {r.status === "approved" && (
+                  <span>
+                    Approved by <b>{r.approvedBy || "HR"}</b>
+                    {r.approvedAt ? ` • ${fmt(r.approvedAt)}` : ""}
+                  </span>
+                )}
+
+                {r.status === "denied" && (
+                  <span>
+                    Denied by <b>{r.deniedBy || "HR"}</b>
+                    {r.deniedAt ? ` • ${fmt(r.deniedAt)}` : ""}
+                  </span>
+                )}
+              </div>  
 
               <div
                 style={{

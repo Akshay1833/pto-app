@@ -38,6 +38,10 @@ type PTORequest = {
   status: "pending" | "approved" | "denied";
   createdAt: string;
   updatedAt: string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  deniedBy?: string | null;
+  deniedAt?: string | null;
 };
 
 function isValidLeaveType(x: unknown): x is LeaveType {
@@ -218,19 +222,23 @@ export async function POST(req: Request) {
     id: randomId(),
     userEmail: email,
     userName: session?.user?.name ?? null,
-
+  
     leaveType,
     durationType,
     startDate,
     endDate: normalizedEndDate,
     hours: hourlyHours,
     totalHours,
-
+  
     reason: reason.trim(),
-
     status: "pending",
     createdAt: now,
     updatedAt: now,
+  
+    approvedBy: null,
+    approvedAt: null,
+    deniedBy: null,
+    deniedAt: null,
   };
 
   data.requests.push(newReq);
