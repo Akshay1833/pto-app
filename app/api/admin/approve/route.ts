@@ -122,6 +122,9 @@ export async function POST(req: Request) {
   // How many hours to deduct (we rely on totalHours calculated when created)
   const hoursToDeduct = Number(item.totalHours ?? item.hours ?? 0);
 
+  let remainingPto = 0;
+  let remainingSick = 0;
+
   if (bucket !== "none") {
     if (!Number.isFinite(hoursToDeduct) || hoursToDeduct <= 0) {
       return NextResponse.json(
@@ -157,6 +160,9 @@ export async function POST(req: Request) {
       balances[userKey].sickHours -= hoursToDeduct;
     }
 
+    remainingPto = balances[userKey]?.ptoHours ?? 0;
+    remainingSick = balances[userKey]?.sickHours ?? 0;
+
     await writeBalances(balances);
   }
 
@@ -176,12 +182,24 @@ export async function POST(req: Request) {
     subject: "Your PTO Request Was Approved",
     html: `
       <h2>PTO Request Approved</h2>
+  
       <p>Hello ${item.userName || item.userEmail},</p>
+  
       <p>Your request has been <strong>approved</strong>.</p>
-      <p><strong>Type:</strong> ${item.type}</p>
+  
+      <p><strong>Leave Type:</strong> ${item.leaveType}</p>
+      <p><strong>Duration:</strong> ${item.durationType}</p>
       <p><strong>Start Date:</strong> ${item.startDate}</p>
       <p><strong>End Date:</strong> ${item.endDate}</p>
-      <p><strong>Reason:</strong> ${item.reason}</p>
+      <p><strong>Total Hours Used:</strong> ${item.totalHours}</p>
+  
+      <hr/>
+  
+      <h3>Remaining Balance</h3>
+  
+      <p><strong>PTO:</strong> ${remainingPto} hours</p>
+      <p><strong>Sick:</strong> ${remainingSick} hours</p>
+  
     `,
   });
 

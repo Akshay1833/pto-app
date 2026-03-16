@@ -248,13 +248,16 @@ export async function POST(req: Request) {
   await writeData(data);
 
   await sendEmail({
-    to: process.env.HR_EMAIL || "lkimbrough@bullzeyeequipment.com",
+    to: (process.env.HR_EMAIL || "lkimbrough@bullzeyeequipment.com")
+      .split(",")
+      .map((email) => email.trim())
+      .filter(Boolean),
     subject: `New PTO Request - ${newReq.userName || newReq.userEmail}`,
     html: `
       <h2>New PTO Request</h2>
       <p><strong>Employee:</strong> ${newReq.userName || "Unknown"}</p>
       <p><strong>Email:</strong> ${newReq.userEmail}</p>
-      <p><strong>Type:</strong> ${newReq.type}</p>
+      <p><strong>Leave Type:</strong> ${newReq.leaveType}</p>
       <p><strong>Start Date:</strong> ${newReq.startDate}</p>
       <p><strong>End Date:</strong> ${newReq.endDate}</p>
       <p><strong>Reason:</strong> ${newReq.reason}</p>

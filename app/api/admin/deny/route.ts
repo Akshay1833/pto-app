@@ -6,6 +6,7 @@ import { requireHr } from "../../_utils/isHr";
 import { sendEmail } from "../../_utils/email";
 
 const DATA_PATH = path.join(process.cwd(), "data", "pto.json");
+const BALANCES_PATH = path.join(process.cwd(), "data", "balances.json");
 
 type PTORequest = {
   type: any;
@@ -31,6 +32,13 @@ type PTORequest = {
   deniedBy?: string | null;
   deniedAt?: string | null;
 };
+type Balances = Record<
+  string,
+  {
+    pto: number;
+    sick: number;
+  }
+>;
 
 async function readData(): Promise<{ requests: PTORequest[] }> {
   try {
@@ -41,6 +49,15 @@ async function readData(): Promise<{ requests: PTORequest[] }> {
     };
   } catch {
     return { requests: [] };
+  }
+}
+
+async function readBalances(): Promise<Balances> {
+  try {
+    const raw = await fs.readFile(BALANCES_PATH, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return {};
   }
 }
 
@@ -71,6 +88,7 @@ export async function POST(req: Request) {
   }
 
   const data = await readData();
+  const balances = await readBalances();
   const item = data.requests.find((r) => r.id === id);
 
   if (!item) {
@@ -95,19 +113,26 @@ export async function POST(req: Request) {
   item.approvedAt = null;
   item.updatedAt = now;
 
+  const remainingPto = balances[item.userEmail]?.pto ?? 0;
+  const remainingSick = balances[item.userEmail]?.sick ?? 0;
+
   await writeData(data);
   await sendEmail({
     to: item.userEmail,
     subject: "Your PTO Request Was Denied",
     html: `
-      <h2>PTO Request Denied</h2>
-      <p>Hello ${item.userName || item.userEmail},</p>
-      <p>Your request has been <strong>denied</strong>.</p>
-      <p><strong>Type:</strong> ${item.type}</p>
-      <p><strong>Start Date:</strong> ${item.startDate}</p>
-      <p><strong>End Date:</strong> ${item.endDate}</p>
-      <p><strong>Reason:</strong> ${item.reason}</p>
-    `,
+    <h2>PTO Request Denied</h2>
+    <p>Hello ${item.userName || item.userEmail},</p>
+    <p>Your request has been <strong>denied</strong>.</p>
+    <p><strong>Leave Type:</strong> ${item.leaveType}</p>
+    <p><strong>Duration:</strong> ${item.durationType}</p>
+    <p><strong>Total Hours:</strong> ${item.totalHours}</p>
+    <p><strong>Start Date:</strong> ${item.startDate}</p>
+    <p><strong>End Date:</strong> ${item.endDate}</p>
+    <p><strong>Reason:</strong> ${item.reason}</p>
+    <p><strong>Current PTO Balance:</strong> ${remainingPto} hours</p>
+    <p><strong>Current Sick Balance:</strong> ${remainingSick} hours</p>
+  `,
   });
 
   return NextResponse.json({
