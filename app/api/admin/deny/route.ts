@@ -3,10 +3,12 @@ import { getServerSession } from "next-auth";
 import { promises as fs } from "fs";
 import path from "path";
 import { requireHr } from "../../_utils/isHr";
+import { sendEmail } from "../../_utils/email";
 
 const DATA_PATH = path.join(process.cwd(), "data", "pto.json");
 
 type PTORequest = {
+  type: any;
   id: string;
   userEmail: string;
   userName?: string | null;
@@ -94,6 +96,19 @@ export async function POST(req: Request) {
   item.updatedAt = now;
 
   await writeData(data);
+  await sendEmail({
+    to: item.userEmail,
+    subject: "Your PTO Request Was Denied",
+    html: `
+      <h2>PTO Request Denied</h2>
+      <p>Hello ${item.userName || item.userEmail},</p>
+      <p>Your request has been <strong>denied</strong>.</p>
+      <p><strong>Type:</strong> ${item.type}</p>
+      <p><strong>Start Date:</strong> ${item.startDate}</p>
+      <p><strong>End Date:</strong> ${item.endDate}</p>
+      <p><strong>Reason:</strong> ${item.reason}</p>
+    `,
+  });
 
   return NextResponse.json({
     ok: true,

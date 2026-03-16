@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { promises as fs } from "fs";
 import path from "path";
+import { sendEmail } from "../_utils/email";
 
 const DATA_PATH = path.join(process.cwd(), "data", "pto.json");
 const HOURS_PER_DAY = 8 as const;
@@ -21,6 +22,7 @@ type LeaveType = (typeof LEAVE_TYPES)[number];
 type DurationType = "full_day" | "hourly";
 
 type PTORequest = {
+  type: any;
   id: string;
   userEmail: string;
   userName?: string | null;
@@ -222,27 +224,43 @@ export async function POST(req: Request) {
     id: randomId(),
     userEmail: email,
     userName: session?.user?.name ?? null,
-  
+
     leaveType,
     durationType,
     startDate,
     endDate: normalizedEndDate,
     hours: hourlyHours,
     totalHours,
-  
+
     reason: reason.trim(),
     status: "pending",
     createdAt: now,
     updatedAt: now,
-  
+
     approvedBy: null,
     approvedAt: null,
     deniedBy: null,
     deniedAt: null,
+    type: undefined,
   };
 
   data.requests.push(newReq);
   await writeData(data);
+
+  await sendEmail({
+    to: process.env.HR_EMAIL || "lkimbrough@bullzeyeequipment.com",
+    subject: `New PTO Request - ${newReq.userName || newReq.userEmail}`,
+    html: `
+      <h2>New PTO Request</h2>
+      <p><strong>Employee:</strong> ${newReq.userName || "Unknown"}</p>
+      <p><strong>Email:</strong> ${newReq.userEmail}</p>
+      <p><strong>Type:</strong> ${newReq.type}</p>
+      <p><strong>Start Date:</strong> ${newReq.startDate}</p>
+      <p><strong>End Date:</strong> ${newReq.endDate}</p>
+      <p><strong>Reason:</strong> ${newReq.reason}</p>
+      <p><strong>Status:</strong> pending</p>
+    `,
+  });
 
   return NextResponse.json({ request: newReq }, { status: 201 });
 }

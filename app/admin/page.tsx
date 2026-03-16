@@ -92,7 +92,7 @@ function Badge({
       border: "1px solid #E5E7EB",
       color: "#111827",
     },
-    pto: {
+    pto: {  
       background: "#ECFDF5",
       border: "1px solid #A7F3D0",
       color: "#065F46",

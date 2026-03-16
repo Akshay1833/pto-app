@@ -1,3 +1,40 @@
 {
-  "requests": []
+  "requests": [
+    {
+      "id": "mmt9lmq1l30k80zm",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "leaveType": "Vacation",
+      "durationType": "full_day",
+      "startDate": "2026-03-16",
+      "endDate": "2026-03-16",
+      "totalHours": 8,
+      "reason": "vaca",
+      "status": "approved",
+      "createdAt": "2026-03-16T14:14:26.377Z",
+      "updatedAt": "2026-03-16T14:16:48.539Z",
+      "approvedBy": "Akshay Dhakan",
+      "approvedAt": "2026-03-16T14:16:48.539Z",
+      "deniedBy": null,
+      "deniedAt": null
+    },
+    {
+      "id": "mmt9qlclzarxgt1o",
+      "userEmail": "adhakan@bullzeyeequipment.com",
+      "userName": "Akshay Dhakan",
+      "leaveType": "Vacation",
+      "durationType": "full_day",
+      "startDate": "2026-03-17",
+      "endDate": "2026-03-17",
+      "totalHours": 8,
+      "reason": "vaca1",
+      "status": "pending",
+      "createdAt": "2026-03-16T14:18:17.877Z",
+      "updatedAt": "2026-03-16T14:18:17.877Z",
+      "approvedBy": null,
+      "approvedAt": null,
+      "deniedBy": null,
+      "deniedAt": null
+    }
+  ]
 }
