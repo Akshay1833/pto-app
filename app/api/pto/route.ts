@@ -13,6 +13,22 @@ import {
 
 type DurationType = "full_day" | "hourly";
 
+type UserPtoRequestRow = {
+  id: string;
+  leaveType: string;
+  durationType: string;
+  startDate: Date;
+  endDate: Date;
+  hours: number | null;
+  totalHours: number | null;
+  reason: string | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  approvedAt: Date | null;
+  deniedAt: Date | null;
+};
+
 export async function GET() {
   const session = await getServerSession();
   const email = session?.user?.email?.toLowerCase();
@@ -29,7 +45,7 @@ export async function GET() {
     return NextResponse.json({ requests: [] });
   }
 
-  const requests = await prisma.leaveRequest.findMany({
+  const requests: UserPtoRequestRow[] = await prisma.leaveRequest.findMany({
     where: { userId: user.id },
     orderBy: { createdAt: "desc" },
   });
@@ -49,7 +65,9 @@ export async function GET() {
       status: r.status,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
+      approvedBy: null,
       approvedAt: r.approvedAt?.toISOString() ?? null,
+      deniedBy: null,
       deniedAt: r.deniedAt?.toISOString() ?? null,
     })),
   });
@@ -97,7 +115,7 @@ export async function POST(req: Request) {
 
   let normalizedEndDate = startDate;
   let totalHours = 0;
-  let hourlyHours: number | undefined = undefined;
+  let hourlyHours: number | null = null;
 
   if (durationType === "hourly") {
     const h = Number(hours);
@@ -164,13 +182,14 @@ export async function POST(req: Request) {
     }
   }
 
-  const existing = await prisma.leaveRequest.findMany({
-    where: {
-      userId: user.id,
-      status: { not: "denied" },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const existing: Array<{ startDate: Date; endDate: Date }> =
+    await prisma.leaveRequest.findMany({
+      where: {
+        userId: user.id,
+        status: { not: "denied" },
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
   const overlap = existing.some((r) =>
     rangesOverlap(
@@ -208,24 +227,24 @@ export async function POST(req: Request) {
   });
 
   await sendEmail({
-    to: "lkimbrough@bullzeyeequipment.com",
+    to: process.env.HR_EMAIL || "lkimbrough@bullzeyeequipment.com",
     subject: "New PTO Request",
     html: `
-  <h2>New PTO Request</h2>
-  <p><strong>Employee:</strong> ${name ?? email}</p>
-  <p><strong>Email:</strong> ${email}</p>
-  <p><strong>Type:</strong> ${leaveType}</p>
-  <p><strong>Dates:</strong> ${startDate} → ${normalizedEndDate}</p>
-  <p><strong>Hours:</strong> ${totalHours}</p>
-  <p><strong>Reason:</strong> ${reason.trim()}</p>
-  <hr />
-  <p><strong>Current PTO Balance:</strong> ${
-    currentBalance?.ptoHours ?? 0
-  } hrs</p>
-  <p><strong>Current Sick Balance:</strong> ${
-    currentBalance?.sickHours ?? 0
-  } hrs</p>
-`,
+      <h2>New PTO Request</h2>
+      <p><strong>Employee:</strong> ${name ?? email}</p>
+      <p><strong>Email:</strong> ${email}</p>
+      <p><strong>Type:</strong> ${leaveType}</p>
+      <p><strong>Dates:</strong> ${startDate} - ${normalizedEndDate}</p>
+      <p><strong>Hours:</strong> ${totalHours}</p>
+      <p><strong>Reason:</strong> ${reason}</p>
+      <hr />
+      <p><strong>Current PTO Balance:</strong> ${
+        currentBalance?.ptoHours ?? 0
+      } hrs</p>
+      <p><strong>Current Sick Balance:</strong> ${
+        currentBalance?.sickHours ?? 0
+      } hrs</p>
+    `,
   });
 
   return NextResponse.json(
