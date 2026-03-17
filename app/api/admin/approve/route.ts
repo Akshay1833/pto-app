@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { LEAVE_DEDUCT_RULES } from "@/lib/pto";
 import { requireHr } from "../../_utils/isHr";
 import { sendEmail } from "@/lib/email";
+import type { Prisma } from "@prisma/client";
 
 export async function POST(req: Request) {
   const session = await getServerSession();
@@ -30,120 +31,122 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const actor = await tx.user.findUnique({
-        where: { email: hrEmail },
-      });
+    const result = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        const actor = await tx.user.findUnique({
+          where: { email: hrEmail },
+        });
 
-      const item = await tx.leaveRequest.findUnique({
-        where: { id },
-        include: {
-          user: {
-            include: {
-              balance: true,
+        const item = await tx.leaveRequest.findUnique({
+          where: { id },
+          include: {
+            user: {
+              include: {
+                balance: true,
+              },
             },
           },
-        },
-      });
+        });
 
-      if (!item) {
-        throw new Error("Request not found");
-      }
-
-      if (item.status !== "pending") {
-        throw new Error("Only pending requests can be approved.");
-      }
-
-      const bucket = LEAVE_DEDUCT_RULES[item.leaveType] ?? "pto";
-      const hoursToDeduct = Number(item.totalHours ?? item.hours ?? 0);
-
-      if (bucket !== "none") {
-        if (!Number.isFinite(hoursToDeduct) || hoursToDeduct <= 0) {
-          throw new Error("Invalid hours on request.");
+        if (!item) {
+          throw new Error("Request not found");
         }
 
-        const balance = item.user.balance;
-
-        if (!balance) {
-          throw new Error("Employee balance record not found.");
+        if (item.status !== "pending") {
+          throw new Error("Only pending requests can be approved.");
         }
 
-        if (bucket === "pto") {
-          if (balance.ptoHours < hoursToDeduct) {
-            throw new Error(
-              `Insufficient PTO balance. Needs ${hoursToDeduct}, has ${balance.ptoHours}.`
-            );
+        const bucket = LEAVE_DEDUCT_RULES[item.leaveType] ?? "pto";
+        const hoursToDeduct = Number(item.totalHours ?? item.hours ?? 0);
+
+        if (bucket !== "none") {
+          if (!Number.isFinite(hoursToDeduct) || hoursToDeduct <= 0) {
+            throw new Error("Invalid hours on request.");
           }
 
-          await tx.balance.update({
-            where: { userId: item.userId },
-            data: {
-              ptoHours: {
-                decrement: hoursToDeduct,
-              },
-            },
-          });
-        } else {
-          if (balance.sickHours < hoursToDeduct) {
-            throw new Error(
-              `Insufficient Sick balance. Needs ${hoursToDeduct}, has ${balance.sickHours}.`
-            );
+          const balance = item.user.balance;
+
+          if (!balance) {
+            throw new Error("Employee balance record not found.");
           }
 
-          await tx.balance.update({
-            where: { userId: item.userId },
-            data: {
-              sickHours: {
-                decrement: hoursToDeduct,
+          if (bucket === "pto") {
+            if (balance.ptoHours < hoursToDeduct) {
+              throw new Error(
+                `Insufficient PTO balance. Needs ${hoursToDeduct}, has ${balance.ptoHours}.`
+              );
+            }
+
+            await tx.balance.update({
+              where: { userId: item.userId },
+              data: {
+                ptoHours: {
+                  decrement: hoursToDeduct,
+                },
               },
-            },
-          });
+            });
+          } else {
+            if (balance.sickHours < hoursToDeduct) {
+              throw new Error(
+                `Insufficient Sick balance. Needs ${hoursToDeduct}, has ${balance.sickHours}.`
+              );
+            }
+
+            await tx.balance.update({
+              where: { userId: item.userId },
+              data: {
+                sickHours: {
+                  decrement: hoursToDeduct,
+                },
+              },
+            });
+          }
         }
+
+        const updated = await tx.leaveRequest.update({
+          where: { id },
+          data: {
+            status: "approved",
+            approvedByUserId: actor?.id ?? null,
+            approvedAt: new Date(),
+            deniedByUserId: null,
+            deniedAt: null,
+          },
+        });
+
+        await sendEmail({
+          to: item.user.email,
+          subject: "PTO Request Approved",
+          html: `
+            <h2>Your PTO Request Was Approved</h2>
+            <p><strong>Type:</strong> ${item.leaveType}</p>
+            <p><strong>Dates:</strong> ${String(item.startDate).slice(
+              0,
+              10
+            )} → ${String(item.endDate).slice(0, 10)}</p>
+            <p><strong>Hours:</strong> ${hoursToDeduct}</p>
+            <p><strong>Remaining PTO:</strong> ${
+              bucket === "pto"
+                ? (item.user.balance?.ptoHours ?? 0) - hoursToDeduct
+                : item.user.balance?.ptoHours ?? 0
+            } hrs</p>
+            <p><strong>Remaining Sick:</strong> ${
+              bucket === "sick"
+                ? (item.user.balance?.sickHours ?? 0) - hoursToDeduct
+                : item.user.balance?.sickHours ?? 0
+            } hrs</p>
+          `,
+        });
+
+        return {
+          ok: true,
+          id: updated.id,
+          status: updated.status,
+          bucket,
+          deductedHours: bucket === "none" ? 0 : hoursToDeduct,
+        };
       }
-
-      const updated = await tx.leaveRequest.update({
-        where: { id },
-        data: {
-          status: "approved",
-          approvedByUserId: actor?.id ?? null,
-          approvedAt: new Date(),
-          deniedByUserId: null,
-          deniedAt: null,
-        },
-      });
-
-      await sendEmail({
-        to: item.user.email,
-        subject: "PTO Request Approved",
-        html: `
-          <h2>Your PTO Request Was Approved</h2>
-          <p><strong>Type:</strong> ${item.leaveType}</p>
-          <p><strong>Dates:</strong> ${String(item.startDate).slice(
-            0,
-            10
-          )} → ${String(item.endDate).slice(0, 10)}</p>
-          <p><strong>Hours:</strong> ${hoursToDeduct}</p>
-          <p><strong>Remaining PTO:</strong> ${
-            bucket === "pto"
-              ? (item.user.balance?.ptoHours ?? 0) - hoursToDeduct
-              : item.user.balance?.ptoHours ?? 0
-          } hrs</p>
-          <p><strong>Remaining Sick:</strong> ${
-            bucket === "sick"
-              ? (item.user.balance?.sickHours ?? 0) - hoursToDeduct
-              : item.user.balance?.sickHours ?? 0
-          } hrs</p>
-        `,
-      });
-
-      return {
-        ok: true,
-        id: updated.id,
-        status: updated.status,
-        bucket,
-        deductedHours: bucket === "none" ? 0 : hoursToDeduct,
-      };
-    });
+    );
 
     return NextResponse.json(result);
   } catch (error) {
