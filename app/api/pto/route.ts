@@ -208,7 +208,7 @@ export async function POST(req: Request) {
   });
 
   await sendEmail({
-    to: "adhakan@bullzeyeequipment.com",
+    to: "lkimbrough@bullzeyeequipment.com",
     subject: "New PTO Request",
     html: `
   <h2>New PTO Request</h2>
