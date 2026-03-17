@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 function fmt(ts?: string | null) {
   if (!ts) return "";
@@ -92,7 +93,7 @@ function Badge({
       border: "1px solid #E5E7EB",
       color: "#111827",
     },
-    pto: {  
+    pto: {
       background: "#ECFDF5",
       border: "1px solid #A7F3D0",
       color: "#065F46",
@@ -130,6 +131,10 @@ export default function AdminPage() {
 
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [balances, setBalances] = useState<Record<string, Balance>>({});
+
+  const router = useRouter();
+  const [hrChecked, setHrChecked] = useState(false);
+  const [isHr, setIsHr] = useState(false);
 
   async function loadBalances() {
     try {
@@ -189,9 +194,44 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function checkHrAccess() {
+      try {
+        const res = await fetch("/api/balance?all=1", { cache: "no-store" });
+
+        if (cancelled) return;
+
+        if (res.status === 401 || res.status === 403) {
+          router.replace("/pto");
+          return;
+        }
+
+        if (!res.ok) {
+          router.replace("/pto");
+          return;
+        }
+
+        setIsHr(true);
+        setHrChecked(true);
+      } catch {
+        router.replace("/pto");
+      }
+    }
+
+    checkHrAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!hrChecked || !isHr) return;
+
     loadRequests();
     loadBalances();
-  }, []);
+  }, [hrChecked, isHr]);
 
   const sorted = useMemo(() => {
     return [...requests].sort((a, b) =>
@@ -237,6 +277,9 @@ export default function AdminPage() {
   const isMobile =
     typeof window !== "undefined" ? window.innerWidth < 900 : false;
 
+  if (!hrChecked) {
+    return <div style={{ padding: 24 }}>Checking access...</div>;
+  }
   return (
     <div style={{ background: "#ffffff", minHeight: "100vh" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 18px" }}>

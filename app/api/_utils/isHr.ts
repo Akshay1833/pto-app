@@ -1,9 +1,5 @@
 import { getServerSession } from "next-auth";
-
-const HR_EMAILS = [
-  "adhakan@bullzeyeequipment.com", // TEMP: you
-  "lkimbrough@bullzeyeequipment.com", // real HR
-].map((e) => e.toLowerCase());
+import { prisma } from "@/lib/prisma";
 
 export async function requireHr() {
   const session = await getServerSession();
@@ -13,7 +9,12 @@ export async function requireHr() {
     return { ok: false as const, status: 401 as const, email: null };
   }
 
-  if (!HR_EMAILS.includes(email)) {
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { isHr: true },
+  });
+
+  if (!user?.isHr) {
     return { ok: false as const, status: 403 as const, email };
   }
 

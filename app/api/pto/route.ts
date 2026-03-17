@@ -1,128 +1,64 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { promises as fs } from "fs";
-import path from "path";
-import { sendEmail } from "../_utils/email";
+import { prisma } from "@/lib/prisma";
+import { sendEmail } from "@/lib/email";
+import {
+  HOURS_PER_DAY,
+  isValidLeaveType,
+  daysInclusive,
+  rangesOverlap,
+  randomId,
+  toYmd,
+} from "@/lib/pto";
 
-const DATA_PATH = path.join(process.cwd(), "data", "pto.json");
-const HOURS_PER_DAY = 8 as const;
-
-const LEAVE_TYPES = [
-  "Vacation",
-  "Personal leave",
-  "Sick",
-  "Jury duty",
-  "Voting",
-  "Bereavement",
-  "Family medical leave",
-  "Other",
-] as const;
-
-type LeaveType = (typeof LEAVE_TYPES)[number];
 type DurationType = "full_day" | "hourly";
 
-type PTORequest = {
-  type: any;
-  id: string;
-  userEmail: string;
-  userName?: string | null;
-
-  leaveType: LeaveType;
-  durationType: DurationType;
-
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD (hourly: same as startDate)
-  hours?: number; // only for hourly
-  totalHours: number;
-
-  reason: string;
-
-  status: "pending" | "approved" | "denied";
-  createdAt: string;
-  updatedAt: string;
-  approvedBy?: string | null;
-  approvedAt?: string | null;
-  deniedBy?: string | null;
-  deniedAt?: string | null;
-};
-
-function isValidLeaveType(x: unknown): x is LeaveType {
-  return (
-    typeof x === "string" && (LEAVE_TYPES as readonly string[]).includes(x)
-  );
-}
-
-function toDate(d: string) {
-  return new Date(`${d}T00:00:00`);
-}
-
-function daysInclusive(start: string, end: string) {
-  const s = toDate(start).getTime();
-  const e = toDate(end).getTime();
-  const diff = Math.floor((e - s) / (1000 * 60 * 60 * 24)) + 1;
-  return Math.max(1, diff);
-}
-
-function rangesOverlap(
-  aStart: string,
-  aEnd: string,
-  bStart: string,
-  bEnd: string
-) {
-  const aS = toDate(aStart).getTime();
-  const aE = toDate(aEnd).getTime();
-  const bS = toDate(bStart).getTime();
-  const bE = toDate(bEnd).getTime();
-  return aS <= bE && bS <= aE;
-}
-
-function normalizeRange(r: { startDate: string; endDate?: string | null }) {
-  return {
-    start: r.startDate,
-    end: r.endDate && typeof r.endDate === "string" ? r.endDate : r.startDate,
-  };
-}
-
-function randomId() {
-  return (
-    Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
-  ).toLowerCase();
-}
-
-async function readData(): Promise<{ requests: PTORequest[] }> {
-  try {
-    const raw = await fs.readFile(DATA_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    return { requests: Array.isArray(parsed?.requests) ? parsed.requests : [] };
-  } catch {
-    return { requests: [] };
-  }
-}
-
-async function writeData(data: { requests: PTORequest[] }) {
-  await fs.mkdir(path.dirname(DATA_PATH), { recursive: true });
-  await fs.writeFile(DATA_PATH, JSON.stringify(data, null, 2), "utf8");
-}
-
-// GET /api/pto -> current user's requests
 export async function GET() {
   const session = await getServerSession();
-  const email = session?.user?.email;
+  const email = session?.user?.email?.toLowerCase();
 
   if (!email) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const data = await readData();
-  const mine = data.requests.filter((r) => r.userEmail === email);
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
 
-  return NextResponse.json({ requests: mine });
+  if (!user) {
+    return NextResponse.json({ requests: [] });
+  }
+
+  const requests = await prisma.leaveRequest.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return NextResponse.json({
+    requests: requests.map((r) => ({
+      id: r.id,
+      userEmail: email,
+      userName: session?.user?.name ?? null,
+      leaveType: r.leaveType,
+      durationType: r.durationType,
+      startDate: toYmd(r.startDate),
+      endDate: toYmd(r.endDate),
+      hours: r.hours,
+      totalHours: r.totalHours,
+      reason: r.reason,
+      status: r.status,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+      approvedAt: r.approvedAt?.toISOString() ?? null,
+      deniedAt: r.deniedAt?.toISOString() ?? null,
+    })),
+  });
 }
 
-// POST /api/pto -> create a leave request
 export async function POST(req: Request) {
   const session = await getServerSession();
-  const email = session?.user?.email;
+  const email = session?.user?.email?.toLowerCase();
+  const name = session?.user?.name ?? null;
 
   if (!email) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
@@ -137,7 +73,6 @@ export async function POST(req: Request) {
   const reason = body?.reason as unknown;
   const hours = body?.hours as unknown;
 
-  // All fields required (rules differ for hourly vs full-day)
   if (!isValidLeaveType(leaveType)) {
     return NextResponse.json({ error: "Invalid leave type" }, { status: 400 });
   }
@@ -149,14 +84,14 @@ export async function POST(req: Request) {
     );
   }
 
-  if (typeof startDate !== "string" || startDate.trim().length === 0) {
+  if (typeof startDate !== "string" || !startDate.trim()) {
     return NextResponse.json(
       { error: "Start date is required" },
       { status: 400 }
     );
   }
 
-  if (typeof reason !== "string" || reason.trim().length === 0) {
+  if (typeof reason !== "string" || !reason.trim()) {
     return NextResponse.json({ error: "Reason is required" }, { status: 400 });
   }
 
@@ -165,9 +100,8 @@ export async function POST(req: Request) {
   let hourlyHours: number | undefined = undefined;
 
   if (durationType === "hourly") {
-    normalizedEndDate = startDate;
-
     const h = Number(hours);
+
     if (!Number.isFinite(h) || h <= 0 || h > HOURS_PER_DAY) {
       return NextResponse.json(
         { error: "Hours must be between 0.25 and 8" },
@@ -175,7 +109,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // enforce 0.25 increments
     const rounded = Math.round(h * 4) / 4;
     if (Math.abs(rounded - h) > 1e-9) {
       return NextResponse.json(
@@ -187,29 +120,66 @@ export async function POST(req: Request) {
     hourlyHours = h;
     totalHours = h;
   } else {
-    if (typeof endDate !== "string" || endDate.trim().length === 0) {
+    if (typeof endDate !== "string" || !endDate.trim()) {
       return NextResponse.json(
         { error: "End date is required for full-day leave" },
         { status: 400 }
       );
     }
-    normalizedEndDate = endDate;
 
-    const d = daysInclusive(startDate, normalizedEndDate);
-    totalHours = d * HOURS_PER_DAY;
+    normalizedEndDate = endDate;
+    totalHours = daysInclusive(startDate, normalizedEndDate) * HOURS_PER_DAY;
   }
 
-  // Overlap prevention with existing pending/approved requests
-  const data = await readData();
-  const existing = data.requests.filter(
-    (r) => r.userEmail === email && r.status !== "denied"
-  );
-
-  const newRange = { start: startDate, end: normalizedEndDate };
-  const overlap = existing.some((r) => {
-    const rr = normalizeRange(r);
-    return rangesOverlap(newRange.start, newRange.end, rr.start, rr.end);
+  let user = await prisma.user.findUnique({
+    where: { email },
   });
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        email,
+        name,
+        balance: {
+          create: {
+            ptoHours: 0,
+            sickHours: 0,
+          },
+        },
+      },
+    });
+  } else {
+    const existingBalance = await prisma.balance.findUnique({
+      where: { userId: user.id },
+    });
+
+    if (!existingBalance) {
+      await prisma.balance.create({
+        data: {
+          userId: user.id,
+          ptoHours: 0,
+          sickHours: 0,
+        },
+      });
+    }
+  }
+
+  const existing = await prisma.leaveRequest.findMany({
+    where: {
+      userId: user.id,
+      status: { not: "denied" },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const overlap = existing.some((r) =>
+    rangesOverlap(
+      startDate,
+      normalizedEndDate,
+      toYmd(r.startDate),
+      toYmd(r.endDate)
+    )
+  );
 
   if (overlap) {
     return NextResponse.json(
@@ -218,52 +188,68 @@ export async function POST(req: Request) {
     );
   }
 
-  const now = new Date().toISOString();
-
-  const newReq: PTORequest = {
-    id: randomId(),
-    userEmail: email,
-    userName: session?.user?.name ?? null,
-
-    leaveType,
-    durationType,
-    startDate,
-    endDate: normalizedEndDate,
-    hours: hourlyHours,
-    totalHours,
-
-    reason: reason.trim(),
-    status: "pending",
-    createdAt: now,
-    updatedAt: now,
-
-    approvedBy: null,
-    approvedAt: null,
-    deniedBy: null,
-    deniedAt: null,
-    type: undefined,
-  };
-
-  data.requests.push(newReq);
-  await writeData(data);
-
-  await sendEmail({
-    to: (process.env.HR_EMAIL || "lkimbrough@bullzeyeequipment.com")
-      .split(",")
-      .map((email) => email.trim())
-      .filter(Boolean),
-    subject: `New PTO Request - ${newReq.userName || newReq.userEmail}`,
-    html: `
-      <h2>New PTO Request</h2>
-      <p><strong>Employee:</strong> ${newReq.userName || "Unknown"}</p>
-      <p><strong>Email:</strong> ${newReq.userEmail}</p>
-      <p><strong>Leave Type:</strong> ${newReq.leaveType}</p>
-      <p><strong>Start Date:</strong> ${newReq.startDate}</p>
-      <p><strong>End Date:</strong> ${newReq.endDate}</p>
-      <p><strong>Reason:</strong> ${newReq.reason}</p>
-      <p><strong>Status:</strong> pending</p>
-    `,
+  const created = await prisma.leaveRequest.create({
+    data: {
+      id: randomId(),
+      userId: user.id,
+      leaveType,
+      durationType: durationType as DurationType,
+      startDate: new Date(`${startDate}T00:00:00.000Z`),
+      endDate: new Date(`${normalizedEndDate}T00:00:00.000Z`),
+      hours: hourlyHours,
+      totalHours,
+      reason: reason.trim(),
+      status: "pending",
+    },
   });
 
-  return NextResponse.json({ request: newReq }, { status: 201 });
+  const currentBalance = await prisma.balance.findUnique({
+    where: { userId: user.id },
+  });
+
+  await sendEmail({
+    to: "adhakan@bullzeyeequipment.com",
+    subject: "New PTO Request",
+    html: `
+  <h2>New PTO Request</h2>
+  <p><strong>Employee:</strong> ${name ?? email}</p>
+  <p><strong>Email:</strong> ${email}</p>
+  <p><strong>Type:</strong> ${leaveType}</p>
+  <p><strong>Dates:</strong> ${startDate} → ${normalizedEndDate}</p>
+  <p><strong>Hours:</strong> ${totalHours}</p>
+  <p><strong>Reason:</strong> ${reason.trim()}</p>
+  <hr />
+  <p><strong>Current PTO Balance:</strong> ${
+    currentBalance?.ptoHours ?? 0
+  } hrs</p>
+  <p><strong>Current Sick Balance:</strong> ${
+    currentBalance?.sickHours ?? 0
+  } hrs</p>
+`,
+  });
+
+  return NextResponse.json(
+    {
+      request: {
+        id: created.id,
+        userEmail: email,
+        userName: name,
+        leaveType: created.leaveType,
+        durationType: created.durationType,
+        startDate: toYmd(created.startDate),
+        endDate: toYmd(created.endDate),
+        hours: created.hours,
+        totalHours: created.totalHours,
+        reason: created.reason,
+        status: created.status,
+        createdAt: created.createdAt.toISOString(),
+        updatedAt: created.updatedAt.toISOString(),
+        approvedBy: null,
+        approvedAt: null,
+        deniedBy: null,
+        deniedAt: null,
+      },
+    },
+    { status: 201 }
+  );
 }

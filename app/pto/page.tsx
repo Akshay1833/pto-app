@@ -163,12 +163,30 @@ export default function PTOPage() {
   }
 
   useEffect(() => {
-    fetch("/api/hr", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setIsHr(!!d?.isHr))
-      .catch(() => setIsHr(false));
-    loadRequests();
-    loadBalance();
+    let cancelled = false;
+
+    async function initPage() {
+      try {
+        const hrRes = await fetch("/api/balance?all=1", { cache: "no-store" });
+
+        if (!cancelled) {
+          setIsHr(hrRes.ok);
+        }
+      } catch {
+        if (!cancelled) {
+          setIsHr(false);
+        }
+      }
+
+      await loadRequests();
+      await loadBalance();
+    }
+
+    initPage();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function submitRequest(e: React.FormEvent) {
@@ -586,7 +604,7 @@ export default function PTOPage() {
                     {r.deniedAt ? ` • ${fmt(r.deniedAt)}` : ""}
                   </span>
                 )}
-              </div>  
+              </div>
 
               <div
                 style={{

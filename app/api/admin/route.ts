@@ -1,33 +1,51 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { promises as fs } from "fs";
-import path from "path";
+import { prisma } from "@/lib/prisma";
+import { requireHr } from "../_utils/isHr";
 
-const DATA_PATH = path.join(process.cwd(), "data", "pto.json");
-const HR_EMAIL = "adhakan@bullzeyeequipment.com";
-
-async function readData() {
-  try {
-    const raw = await fs.readFile(DATA_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    return { requests: Array.isArray(parsed.requests) ? parsed.requests : [] };
-  } catch {
-    return { requests: [] };
-  }
+function toYmd(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 export async function GET() {
-  const session = await getServerSession();
-  const email = session?.user?.email;
+  const hr = await requireHr();
 
-  if (!email) {
-    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  if (!hr.ok) {
+    return NextResponse.json(
+      { error: hr.status === 401 ? "Unauthorized" : "Forbidden" },
+      { status: hr.status }
+    );
   }
 
-  if (email.toLowerCase() !== HR_EMAIL.toLowerCase()) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const requests = await prisma.leaveRequest.findMany({
+    include: {
+      user: true,
+      approvedBy: true,
+      deniedBy: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
 
-  const data = await readData();
-  return NextResponse.json({ requests: data.requests });
+  return NextResponse.json({
+    requests: requests.map((r) => ({
+      id: r.id,
+      userEmail: r.user.email,
+      userName: r.user.name ?? null,
+      leaveType: r.leaveType,
+      durationType: r.durationType,
+      startDate: toYmd(r.startDate),
+      endDate: toYmd(r.endDate),
+      hours: r.hours,
+      totalHours: r.totalHours,
+      reason: r.reason,
+      status: r.status,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+      approvedBy: r.approvedBy?.email ?? null,
+      approvedAt: r.approvedAt?.toISOString() ?? null,
+      deniedBy: r.deniedBy?.email ?? null,
+      deniedAt: r.deniedAt?.toISOString() ?? null,
+    })),
+  });
 }

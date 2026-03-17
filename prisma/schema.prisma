@@ -1,0 +1,69 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" 
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  isHr      Boolean  @default(false)
+
+  balance   Balance?
+  requests  LeaveRequest[] @relation("EmployeeRequests")
+  approvals LeaveRequest[] @relation("ApprovedBy")
+  denials   LeaveRequest[] @relation("DeniedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Balance {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ptoHours  Float    @default(0)
+  sickHours Float    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LeaveRequest {
+  id               String   @id
+  userId           String
+  user             User     @relation("EmployeeRequests", fields: [userId], references: [id], onDelete: Cascade)
+
+  leaveType        String
+  durationType     String
+  startDate        DateTime
+  endDate          DateTime
+  hours            Float?
+  totalHours       Float
+  reason           String
+  status           String
+
+  approvedByUserId String?
+  approvedBy       User?    @relation("ApprovedBy", fields: [approvedByUserId], references: [id])
+
+  approvedAt       DateTime?
+  deniedByUserId   String?
+  deniedBy         User?    @relation("DeniedBy", fields: [deniedByUserId], references: [id])
+  deniedAt         DateTime?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([startDate, endDate])
+}
