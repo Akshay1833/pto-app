@@ -6,6 +6,33 @@ function toYmd(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+type AdminRequestRow = {
+  id: string;
+  totalHours: number | null;
+  reason: string | null;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  approvedAt: Date | null;
+  deniedAt: Date | null;
+  startDate: Date;
+  endDate: Date;
+  durationType: string;
+  leaveType: string;
+  user: {
+    email: string;
+    name: string | null;
+  };
+  approvedBy: {
+    email: string;
+    name: string | null;
+  } | null;
+  deniedBy: {
+    email: string;
+    name: string | null;
+  } | null;
+};
+
 export async function GET() {
   const hr = await requireHr();
 
@@ -16,7 +43,7 @@ export async function GET() {
     );
   }
 
-  const requests = await prisma.leaveRequest.findMany({
+  const requests: AdminRequestRow[] = await prisma.leaveRequest.findMany({
     include: {
       user: true,
       approvedBy: true,
@@ -36,7 +63,7 @@ export async function GET() {
       durationType: r.durationType,
       startDate: toYmd(r.startDate),
       endDate: toYmd(r.endDate),
-      hours: r.hours,
+      hours: r.totalHours,
       totalHours: r.totalHours,
       reason: r.reason,
       status: r.status,
