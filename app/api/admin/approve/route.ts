@@ -20,9 +20,9 @@ export async function POST(req: Request) {
 
   const hr = await requireHr();
 
-  if (hr.ok) {
+  if (!hr.ok) {
     return NextResponse.json(
-      { error: hr.ok ? "Unauthorized" : "Forbidden" },
+      { error: hr.status === 401 ? "Unauthorized" : "Forbidden" },
       { status: hr.status }
     );
   }
@@ -121,24 +121,24 @@ export async function POST(req: Request) {
         to: item.user.email,
         subject: "PTO Request Approved",
         html: `
-            <h2>Your PTO Request Was Approved</h2>
-            <p><strong>Type:</strong> ${item.leaveType}</p>
-            <p><strong>Dates:</strong> ${String(item.startDate).slice(
-              0,
-              10
-            )} → ${String(item.endDate).slice(0, 10)}</p>
-            <p><strong>Hours:</strong> ${hoursToDeduct}</p>
-            <p><strong>Remaining PTO:</strong> ${
-              bucket === "pto"
-                ? (item.user.balance?.ptoHours ?? 0) - hoursToDeduct
-                : item.user.balance?.ptoHours ?? 0
-            } hrs</p>
-            <p><strong>Remaining Sick:</strong> ${
-              bucket === "sick"
-                ? (item.user.balance?.sickHours ?? 0) - hoursToDeduct
-                : item.user.balance?.sickHours ?? 0
-            } hrs</p>
-          `,
+          <h2>Your PTO Request Was Approved</h2>
+          <p><strong>Type:</strong> ${item.leaveType}</p>
+          <p><strong>Dates:</strong> ${String(item.startDate).slice(
+            0,
+            10
+          )} - ${String(item.endDate).slice(0, 10)}</p>
+          <p><strong>Hours:</strong> ${hoursToDeduct}</p>
+          <p><strong>Remaining PTO:</strong> ${
+            bucket === "pto"
+              ? (item.user.balance?.ptoHours ?? 0) - hoursToDeduct
+              : item.user.balance?.ptoHours ?? 0
+          } hrs</p>
+          <p><strong>Remaining Sick:</strong> ${
+            bucket === "sick"
+              ? (item.user.balance?.sickHours ?? 0) - hoursToDeduct
+              : item.user.balance?.sickHours ?? 0
+          } hrs</p>
+        `,
       });
 
       return {
