@@ -1,36 +1,173 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🏖️ Holiday & Sick Day Request App
 
-## Getting Started
+A minimal internal web application for managing employee holiday and sick day requests. Built for small teams, this app streamlines request submission, approval workflows, and leave tracking.
 
-First, run the development server:
+---
+
+## 🚀 Features
+
+* 🔐 Microsoft Entra (Azure AD) authentication
+* 📝 Submit leave requests (Holiday / Sick)
+* ⏱️ Multiple duration types (Full day / Partial day)
+* ✅ Approve or ❌ deny requests (HR workflow)
+* 📊 Automatic leave balance tracking
+* 👥 Designed for internal company use
+* ⚡ Fast deployment with Vercel
+
+---
+
+## 🛠️ Tech Stack
+
+* **Frontend:** Next.js (App Router)
+* **Backend:** Next.js API routes
+* **Authentication:** NextAuth + Microsoft Entra ID
+* **Database:** Prisma ORM
+* **Hosting:** Vercel
+
+---
+
+## 📦 Installation
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/your-repo/holiday-app.git
+cd holiday-app
+```
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+### 3. Set up environment variables
+
+Create a `.env` file in the root directory:
+
+```env
+DATABASE_URL=
+NEXTAUTH_SECRET=
+NEXTAUTH_URL=http://localhost:3000
+AZURE_AD_CLIENT_ID=
+AZURE_AD_CLIENT_SECRET=
+AZURE_AD_TENANT_ID=
+```
+
+### 4. Run database migrations
+
+```bash
+npx prisma migrate dev
+```
+
+### 5. Start the development server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App will be available at:
+👉 [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🔐 Authentication Setup (Microsoft Entra)
 
-## Learn More
+1. Register an application in Microsoft Entra ID
+2. Add a **Web platform** redirect URI:
 
-To learn more about Next.js, take a look at the following resources:
+```
+http://localhost:3000/api/auth/callback/azure-ad
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Generate a client secret
+4. Copy values into your `.env` file
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 🧪 Testing Strategy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The application includes multiple decision paths based on:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+* Leave type (8 types)
+* Duration (Full / Partial)
+* Approval status (Approve / Deny)
+
+### Recommended Testing Approach
+
+* Manual testing for UI validation
+* Automated testing using:
+
+  * **Jest** for logic validation
+  * **Playwright** for end-to-end flows
+
+---
+
+## 🚀 Deployment
+
+This app is optimized for deployment on **Vercel**.
+
+### Steps:
+
+1. Push code to GitHub
+2. Import project into Vercel
+3. Add environment variables in Vercel dashboard
+4. Deploy
+
+---
+
+## ⚠️ Common Issues
+
+### ❌ DATABASE_URL missing
+
+Ensure your `.env` file includes:
+
+```env
+DATABASE_URL=your_database_connection_string
+```
+
+### ❌ Login not working
+
+* Verify Azure credentials
+* Ensure redirect URI matches exactly
+* Check NEXTAUTH_SECRET is set
+
+---
+
+## 📁 Project Structure
+
+```
+/app
+  /api
+  /dashboard
+  /components
+/prisma
+  schema.prisma
+```
+
+---
+
+## 🎯 Future Improvements
+
+* 📅 Calendar view of leave
+* 📧 Email notifications
+* 📈 Reporting dashboard
+* 🔔 Slack / Teams integration
+
+---
+
+## 🤝 Contributing
+
+This is an internal project. Contributions should follow company guidelines.
+
+---
+
+## 📄 License
+
+Private Internal Use Only
+
+---
+
+## 👨‍💻 Author
+
+Built for internal company use to simplify leave management and improve HR workflows.
